@@ -55,7 +55,18 @@ class CharLCD(BaseCharLCD):
                        auto_linebreaks=True,
                        backlight_enabled=True):
         """
-        CharLCD via PCF8574 I2C port expander for pinning of the Pollin converter:
+        
+        CharLCD via PCF8574 I2C port expander:
+            i2c_expander == 'PCF8574'
+            Pin mapping:
+
+            7  | 6  | 5  | 4  | 3  | 2  | 1  | 0
+            D7 | D6 | D5 | D4 | BL | EN | RW | RS
+
+
+        CharLCD via PCF8574 I2C port expander for pinning of the Pollin converter: 
+            i2c_expander == 'PCF8574_POLLIN'
+            There is an assembly kit, e.g. ditributed by Pollin, order code #810 145, using the following mapping between PCF8574 and LCD:
 
             Pin mapping::
 
@@ -63,16 +74,8 @@ class CharLCD(BaseCharLCD):
            N_BL| EN | RW | RS | D7 | D6 | D5 | D4 
 
 
-        CharLCD via PCF8574 I2C port expander:
-
-            Pin mapping::
-
-            7  | 6  | 5  | 4  | 3  | 2  | 1  | 0
-            D7 | D6 | D5 | D4 | BL | EN | RW | RS
-
-
         CharLCD via MCP23008 and MCP23017 I2C port expanders:
-
+            i2c_expander in ['MCP23008', 'MCP23017']
             Adafruit I2C/SPI LCD Backback is supported.
 
             Warning: You might need a level shifter (that supports i2c)
