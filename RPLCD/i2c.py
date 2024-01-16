@@ -27,15 +27,6 @@ except ImportError:
 from . import common as c
 from .lcd import BaseCharLCD
 
-# PCF8574 backlight control
-PCF8574_BACKLIGHT = 0x08
-PCF8574_NOBACKLIGHT = 0x00
-
-# PCF8574 Pin bitmasks
-PCF8574_E = 0x4
-PIN_READ_WRITE = 0x2  # Not used?
-PIN_REGISTER_SELECT = 0x1  # Not used?
-
 # MCP230XX backlight control
 MCP230XX_BACKLIGHT = 0x80
 MCP230XX_NOBACKLIGHT = 0x7f
@@ -64,6 +55,14 @@ class CharLCD(BaseCharLCD):
                        auto_linebreaks=True,
                        backlight_enabled=True):
         """
+        CharLCD via PCF8574 I2C port expander for pinning of the Pollin converter:
+
+            Pin mapping::
+
+            7  | 6  | 5  | 4  | 3  | 2  | 1  | 0
+           N_BL| EN | RW | RS | D7 | D6 | D5 | D4 
+
+
         CharLCD via PCF8574 I2C port expander:
 
             Pin mapping::
@@ -125,11 +124,29 @@ class CharLCD(BaseCharLCD):
         """
         # Set own address and port.
         self._address = address
-        self._port = port
-
-        # Set i2c expander, 'PCF8574', 'MCP23008' and 'MCP23017' are supported.
-        if i2c_expander in ['PCF8574', 'MCP23008', 'MCP23017']:
+        self._port = port        
+        # Set i2c expander, 'PCF8574', 'PCF8574_POLLIN', 'MCP23008' and 'MCP23017' are supported.
+        if i2c_expander in ['PCF8574','PCF8574_POLLIN', 'MCP23008', 'MCP23017']:
             self._i2c_expander = i2c_expander
+
+            global PCF8574_BACKLIGHT, PCF8574_NOBACKLIGHT, PCF8574_E
+            if self._i2c_expander == 'PCF8574_POLLIN':
+                # PCF8574 backlight control
+                PCF8574_BACKLIGHT = 0x00
+                PCF8574_NOBACKLIGHT = 0x80
+
+                # PCF8574 Pin bitmasks
+                PCF8574_E = 0x40
+                
+            else: 
+                # PCF8574 backlight control
+                PCF8574_BACKLIGHT = 0x08
+                PCF8574_NOBACKLIGHT = 0x00
+
+                # PCF8574 Pin bitmasks
+                PCF8574_E = 0x4
+            pass
+        
         else:
             raise NotImplementedError('I2C expander "%s" is not supported.' % i2c_expander)
 
@@ -153,7 +170,7 @@ class CharLCD(BaseCharLCD):
         self.data_bus_mode = c.LCD_4BITMODE
 
         # Set backlight status
-        if self._i2c_expander == 'PCF8574':
+        if self._i2c_expander in ['PCF8574','PCF8574_POLLIN']:
             self._backlight = PCF8574_BACKLIGHT if backlight_enabled else PCF8574_NOBACKLIGHT
         elif self._i2c_expander in ['MCP23008', 'MCP23017']:
             self._backlight = MCP230XX_BACKLIGHT if backlight_enabled else MCP230XX_NOBACKLIGHT
@@ -168,7 +185,7 @@ class CharLCD(BaseCharLCD):
     def _init_connection(self):
         self.bus = SMBus(self._port)
 
-        if self._i2c_expander == 'PCF8574':
+        if self._i2c_expander in ['PCF8574','PCF8574_POLLIN']:
             c.msleep(50)
         elif self._i2c_expander in ['MCP23008', 'MCP23017']:
             # Variable for storing data and applying bitmasks and shifting.
@@ -198,13 +215,13 @@ class CharLCD(BaseCharLCD):
     # Properties
 
     def _get_backlight_enabled(self):
-        if self._i2c_expander == 'PCF8574':
+        if self._i2c_expander in ['PCF8574','PCF8574_POLLIN']:
             return self._backlight == PCF8574_BACKLIGHT
         elif self._i2c_expander in ['MCP23008', 'MCP23017']:
             return self._backlight == MCP230XX_BACKLIGHT
 
     def _set_backlight_enabled(self, value):
-        if self._i2c_expander == 'PCF8574':
+        if self._i2c_expander in ['PCF8574','PCF8574_POLLIN']:
             self._backlight = PCF8574_BACKLIGHT if value else PCF8574_NOBACKLIGHT
             self.bus.write_byte(self._address, self._backlight)
         elif self._i2c_expander in ['MCP23008', 'MCP23017']:
@@ -226,6 +243,11 @@ class CharLCD(BaseCharLCD):
             self.bus.write_byte(self._address, (c.RS_DATA |
                                                ((value << 4) & 0xF0)) | self._backlight)
             self._pulse_data(c.RS_DATA | ((value << 4) & 0xF0))
+        elif self._i2c_expander == 'PCF8574_POLLIN':
+            self.bus.write_byte(self._address, (c.RS_DATA | ((value >> 4) & 0x0F)) | self._backlight)
+            self._pulse_data(c.RS_DATA | ((value >> 4)& 0x0F))
+            self.bus.write_byte(self._address, (c.RS_DATA |(value  & 0x0F)) | self._backlight)
+            self._pulse_data(c.RS_DATA | (value  & 0x0F))
         elif self._i2c_expander in ['MCP23008', 'MCP23017']:
             self._mcp_data |= MCP230XX_RS
             self._pulse_data(value >> 4)
@@ -239,6 +261,13 @@ class CharLCD(BaseCharLCD):
             self.bus.write_byte(self._address, (c.RS_INSTRUCTION |
                                                ((value << 4) & 0xF0)) | self._backlight)
             self._pulse_data(c.RS_INSTRUCTION | ((value << 4) & 0xF0))
+        elif self._i2c_expander == 'PCF8574_POLLIN':
+            self.bus.write_byte(self._address, (c.RS_INSTRUCTION |
+                                               ((value >> 4) & 0x0F)) | self._backlight)
+            self._pulse_data(c.RS_INSTRUCTION | ((value >> 4) & 0x0F))
+            self.bus.write_byte(self._address, (c.RS_INSTRUCTION |
+                                               (value  & 0x0F)) | self._backlight)
+            self._pulse_data(c.RS_INSTRUCTION | (value & 0x0F))
         elif self._i2c_expander in ['MCP23008', 'MCP23017']:
             self._mcp_data &= ~MCP230XX_RS
             self._pulse_data(value >> 4)
@@ -246,7 +275,7 @@ class CharLCD(BaseCharLCD):
 
     def _pulse_data(self, value):
         """Pulse the `enable` flag to process value."""
-        if self._i2c_expander == 'PCF8574':
+        if self._i2c_expander in ['PCF8574','PCF8574_POLLIN']:
             self.bus.write_byte(self._address, ((value & ~PCF8574_E) | self._backlight))
             c.usleep(1)
             self.bus.write_byte(self._address, value | PCF8574_E | self._backlight)
